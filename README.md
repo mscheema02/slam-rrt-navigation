@@ -257,11 +257,3 @@ Depending on your implementation, these are commonly used:
   - Confirm the frame conventions (map/world vs odom) and that `dest` is interpreted in the correct frame.
 
 ---
-
-## Where to add your YouTube link
-
-At the very top of this README, replace `VIDEO_ID` with your YouTube ID (the part after `v=` in a YouTube URL).
-
-Example:
-- URL: `https://www.youtube.com/watch?v=dQw4w9WgXcQ`
-- VIDEO_ID = `dQw4w9WgXcQ`
