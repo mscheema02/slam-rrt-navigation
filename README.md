@@ -9,21 +9,28 @@
 
 ## Overview
 
-This project builds an end-to-end robotics navigation pipeline in **ROS2 + Gazebo**:
+This project implements an end-to-end indoor navigation pipeline in **ROS2 + Gazebo**:
 
-1. **Create a custom indoor world** from a floorplan in Gazebo (Building Editor).
-2. **Run SLAM / mapping** using a LiDAR robot to generate an **occupancy map**.
-3. **Post-process the map** to match world scale and expand obstacles to account for robot size.
+1. **Create a custom indoor world** from a floorplan using Gazebo Building Editor.
+2. **Generate an occupancy map** by exploring the environment with a LiDAR robot (SLAM/mapping).
+3. **Post-process the map** to match world scale and **inflate obstacles** to account for robot footprint.
 4. **Plan a collision-free path** from start → goal using **RRT (Rapidly-exploring Random Tree)**.
-5. **Execute the path** using a **waypoint navigation** script that repeatedly sets the next goal for a `drive_to_goal` controller.
+5. **Execute the path** using a **waypoint runner** that repeatedly updates a `drive_to_goal` controller.
 
-This README focuses on **how to run and reproduce the pipeline**, and what each step is doing.
+---
+
+## Key highlights
+
+- Built a complete **mapping → planning → execution** pipeline in ROS2, integrating simulation, occupancy grids, sampling-based planning (RRT), and waypoint-level control.
+- Implemented **map scaling + obstacle inflation** to make plans physically feasible for a robot footprint (safer clearance from walls).
+- Automated waypoint execution by programmatically updating goals and waiting for **goal-reached** completion before continuing.
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Key highlights (resume-friendly)](#key-highlights-resume-friendly)
 - [Approach](#approach)
   - [1) World creation](#1-world-creation)
   - [2) SLAM + occupancy map generation](#2-slam--occupancy-map-generation)
@@ -39,54 +46,57 @@ This README focuses on **how to run and reproduce the pipeline**, and what each 
   - [3) Generate and save the map](#3-generate-and-save-the-map)
   - [4) Run map processing + RRT planning](#4-run-map-processing--rrt-planning)
   - [5) Run waypoint navigation](#5-run-waypoint-navigation)
+- [Learnings](#learnings)
+- [Resume bullets (copy/paste)](#resume-bullets-copypaste)
 - [Key parameters](#key-parameters)
 - [Troubleshooting](#troubleshooting)
+- [Future improvements](#future-improvements)
 
 ---
 
 ## Approach
 
 ### 1) World creation
-- A floorplan image is selected and imported as a reference.
-- The Gazebo **Building Editor** is used to recreate walls/rooms.
-- The world is exported and placed into a ROS2 package so it can be launched reliably.
+- Select a floorplan image and import it as a reference.
+- Use Gazebo **Building Editor** to recreate walls/rooms.
+- Export the world into a ROS2 package so it can be launched consistently.
 
-**Goal:** Make a realistic indoor layout that the robot can map and navigate.
+**Goal:** Create a realistic indoor environment for mapping + navigation experiments.
 
 ### 2) SLAM + occupancy map generation
-- A LiDAR-equipped robot is spawned in the world.
-- The robot is driven around to observe hallways/rooms and build a map.
+- Spawn a LiDAR-equipped robot and explore the environment.
+- Build an **occupancy grid**:
 - The result is an occupancy grid:
   - **free space**
   - **occupied (walls/obstacles)**
   - **unknown**
 
-**Goal:** Convert sensor observations into a usable grid representation for planning.
+**Goal:** Convert sensor observations into a grid suitable for planning.
 
 ### 3) Map scaling + obstacle inflation
-To safely plan for a real robot footprint:
-- The map image is resized so its scale matches the Gazebo world scale.
-- Obstacles are **dilated / inflated** by approximately the robot radius (plus margin).
+To create safe, feasible plans:
+- Resize the map image so its scale matches the Gazebo world coordinates.
+- Inflate obstacles (dilation) by approximately the robot radius (plus margin).
 
-**Why inflation matters:** Without it, the planner can “clip” corners or plan paths that are too close to walls.
+**Why inflation matters:** It prevents “corner cutting” and reduces wall collisions by enforcing clearance.
 
 ### 4) RRT path planning
-- RRT is used to search a collision-free path from start to goal.
-- The planner samples random points in free space and grows a tree until it reaches the goal region.
-- Once a path is found, it’s converted into a waypoint list.
+- Use RRT to sample points in free space and grow a tree toward the goal (collision-free).
+- Stop when a node enters the goal region, then backtrack to recover a path (sample random points in free spce until reaching goal).
+- Convert the path into a sequence of waypoints.
 
-**Output:** A waypoint sequence such as:
+**Output example:** A waypoint sequence such as,
 ```
 [(x1,y1), (x2,y2), ..., (xN,yN)]
 ```
 
 ### 5) Waypoint navigation execution
-- A `navigation.py`-style script loops through waypoints.
-- For each waypoint, it updates the controller’s goal via ROS2 params, e.g.:
+- A `navigation.py`-style script iterates through waypoints.
+- For each waypoint it updates the controller goal via ROS2 params:
   - `ros2 param set /drive_to_goal dest "[x, y]"`
-- It waits for the controller to report **“Goal reached”** before moving to the next waypoint.
+- It waits for **Goal reached** before sending the next waypoint.
 
-**Goal:** Turn a planned path into a repeatable, automated run.
+**Goal:** Turn an offline plan into a repeatable autonomous run.
 
 ---
 
@@ -94,22 +104,20 @@ To safely plan for a real robot footprint:
 
 - **VMWare Workstation Pro with Ubuntu 22.04** (running on a **Windows PC**)
 - **ROS2 with Gazebo for Simulations**
-- **Python 3** (planning + navigation scripting)
-- Typical ROS2 message stack used in this pipeline:
+- **Python 3** (map processing, RRT, waypoint runner)
+- Typical ROS2 stack used in this pipeline:
   - `nav_msgs` (occupancy grids / maps)
-  - `geometry_msgs` (Twist commands)
   - `sensor_msgs` (LiDAR)
-- Image / grid processing commonly uses:
+  - `geometry_msgs` (Twist commands)
+- Common processing libraries:
   - NumPy
-  - OpenCV (for dilation / resizing)
-
-> Note: Exact package names and scripts depend on your repo structure (this README gives standard commands and patterns).
+  - OpenCV (resize + dilation / inflation)
 
 ---
 
 ## Repository layout
 
-This is a **suggested** structure (adjust to match your repo):
+Suggested structure (adjust to your repo):
 
 ```
 project3/
@@ -118,16 +126,15 @@ project3/
       launch/
       worlds/
       scripts/
-      <nodes>
   maps/
     raw/
     processed/
   planning/
-    rrt_planner.py
     map_processing.py
+    rrt_planner.py
   navigation/
     navigation.py
-  README.md
+  README_Project3.md
 ```
 
 ---
@@ -136,13 +143,14 @@ project3/
 
 ### 0) Prerequisites
 On Ubuntu 22.04 inside VMware:
-- ROS2 installed (commonly **Humble** on Ubuntu 22.04)
+- ROS2 installed (commonly **Humble** for Ubuntu 22.04)
 - Gazebo + ROS2 Gazebo integration installed
-- A working workspace containing:
-  - the world launch
+- A ROS2 workspace containing your:
+  - world launch
   - robot bringup
-  - SLAM/mapping setup (or equivalent mapping pipeline)
-  - your RRT + navigation scripts
+  - mapping (SLAM) pipeline
+  - map processing + RRT planner scripts
+  - waypoint runner + controller (`drive_to_goal`)
 
 ### 1) Build the ROS2 workspace
 
@@ -155,34 +163,30 @@ source install/setup.bash
 
 ### 2) Launch the world + robot
 
-Launch the Gazebo world and spawn the robot:
-
 ```bash
 ros2 launch <your_pkg> <your_world_launch>.launch.py
 ```
 
-Verify:
+
 - Gazebo shows your world correctly
-- Robot is spawned and publishes:
+- Robot is spawned and publishes to:
   - `/scan` (LiDAR)
   - `/odom`
   - camera topics (if applicable)
 
 ### 3) Generate and save the map
 
-Run your mapping + drive around the environment until the map is complete.
-
-If you are using a standard map server workflow, saving might look like:
+Drive the robot around until the map is complete, then save:
 
 ```bash
 ros2 run nav2_map_server map_saver_cli -f maps/raw/my_map
 ```
 
-This typically outputs:
+Outputs typically include:
 - `my_map.pgm` (or `.png`)
 - `my_map.yaml`
 
-> If your project uses a custom method of saving the map, use that instead — the key is to export a map image + metadata.
+> If your project saves maps differently, use that method — the requirement is: map image + metadata.
 
 ### 4) Run map processing + RRT planning
 
@@ -200,7 +204,7 @@ python3 planning/rrt_planner.py   --map maps/processed/my_map_inflated.png   --s
 
 ### 5) Run waypoint navigation
 
-Start your `drive_to_goal` controller node (if it’s not already running):
+Start the controller node if needed:
 
 ```bash
 ros2 run <your_pkg> drive_to_goal
@@ -212,18 +216,29 @@ Then run the waypoint runner:
 python3 navigation/navigation.py --waypoints planning/waypoints.json
 ```
 
-Typical behavior:
-- Sets `dest` for each waypoint
-- Waits until the controller logs/returns **Goal reached**
-- Proceeds to the next waypoint automatically
+Behavior:
+- sets `dest` for each waypoint
+- waits until the controller reports **Goal reached**
+- proceeds to the next waypoint
+
+---
+
+## Learnings
+
+- **Occupancy grid fundamentals:** understanding map resolution/origin, free vs occupied thresholds, and how grid encoding affects planning.
+- **Coordinate frame hygiene:** consistently converting between map/world/robot frames is essential for correct start/goal placement.
+- **Collision safety:** obstacle inflation is a practical must-have when planning for non-point robots.
+- **Sampling-based planning tradeoffs:** RRT performance depends heavily on step size, sampling space, and goal tolerance (speed vs path quality).
+- **Systems debugging:** verifying topic wiring (`/scan`, `/odom`, `/cmd_vel`) and validating each stage independently (map → processed map → path → execution).
 
 ---
 
 ## Key parameters
 
-Depending on your implementation, these are commonly used:
 
-### `drive_to_goal` controller
+Depending on implementation, these are commonly used:
+
+### Controller (`drive_to_goal`)
 - `dest`: goal position `[x, y]`
 - `max_vel`: max speed cap
 - `vel_gain`: velocity scaling (aggressiveness)
@@ -231,29 +246,35 @@ Depending on your implementation, these are commonly used:
 ### Planner
 - `step_size`: RRT expansion step
 - `goal_tolerance`: how close is “good enough”
-- `max_iters`: safety cap on tree growth
+- `max_iters`: limit on tree growth
 
 ### Map processing
-- `inflate_radius_m`: obstacle inflation radius (robot radius + safety margin)
-- `scale_factor` / map resolution: ensure map aligns with Gazebo coordinates
+- `inflate_radius_m`: inflation radius (robot radius + margin)
+- scale / resolution: ensure processed map aligns with Gazebo coordinates
 
 ---
 
 ## Troubleshooting
 
 - **Robot plans a path through walls**
-  - Your map scaling/resolution is mismatched with the Gazebo world scale.
-  - Re-check map metadata (resolution + origin) and your coordinate conversions.
+  - Map scaling/resolution is likely mismatched to the Gazebo world.
+  - Re-check metadata (resolution + origin) and coordinate conversions.
 
 - **Robot drives too close to walls**
-  - Increase obstacle inflation radius slightly.
+  - Increase obstacle inflation radius.
 
 - **RRT never reaches the goal**
-  - Increase `max_iters`, reduce `step_size`, or confirm start/goal are in free space.
-  - Verify that the map image has correct free/occupied encoding.
+  - Confirm start/goal are in free space.
+  - Increase `max_iters`, reduce `step_size`, or increase `goal_tolerance`.
 
-- **Waypoints look correct but robot doesn’t reach them**
-  - Increase `goal_tolerance` or adjust controller `vel_gain`.
-  - Confirm the frame conventions (map/world vs odom) and that `dest` is interpreted in the correct frame.
+- **Robot doesn’t reach waypoints**
+  - Increase `goal_tolerance` slightly or adjust controller `vel_gain`.
+  - Confirm the controller interprets `dest` in the intended frame.
 
 ---
+
+## Future improvements
+
+- Smooth the RRT path (e.g., shortcutting / spline smoothing) to reduce turns and improve controller tracking.
+- Add a cost map (distance-to-obstacle penalty) to bias the planner away from narrow passages.
+- Replace waypoint-only control with a local planner (e.g., Nav2) for better obstacle handling and recovery.
