@@ -272,9 +272,3 @@ Depending on implementation, these are commonly used:
   - Confirm the controller interprets `dest` in the intended frame.
 
 ---
-
-## Future improvements
-
-- Smooth the RRT path (e.g., shortcutting / spline smoothing) to reduce turns and improve controller tracking.
-- Add a cost map (distance-to-obstacle penalty) to bias the planner away from narrow passages.
-- Replace waypoint-only control with a local planner (e.g., Nav2) for better obstacle handling and recovery.
